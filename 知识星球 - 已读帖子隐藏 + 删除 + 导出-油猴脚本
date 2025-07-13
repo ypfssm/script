@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         知识星球 - 已读帖子隐藏 + 删除 + 导出
 // @namespace    http://tampermonkey.net/
-// @version      1.9
+// @version      1.13
 // @description  隐藏已读和删除内容，并存储在 localStorage 中，支持导入/导出已读记录
 // @match        https://wx.zsxq.com/group/*
 // @grant        none
@@ -10,8 +10,8 @@
 (function () {
     'use strict';
 
-    const READ_STORAGE_KEY = 'zsxq_read_topics';   // 保存已读帖子的键
-    const DELETE_STORAGE_KEY = 'zsxq_deleted_topics'; // 保存已删除帖子的键
+    const READ_STORAGE_KEY = 'zsxq_read_topics';
+    const DELETE_STORAGE_KEY = 'zsxq_deleted_topics';
 
     function getReadList() {
         return JSON.parse(localStorage.getItem(READ_STORAGE_KEY) || '[]');
@@ -34,11 +34,10 @@
         localStorage.removeItem(DELETE_STORAGE_KEY);
     }
 
-    function markAsRead(topicId, topicContent) {
+    function markAsRead(topicId, topicContent, topicImages) {
         const list = getReadList();
-        const topicEntry = { id: topicId, content: topicContent };
+        const topicEntry = { id: topicId, content: topicContent, images: topicImages };
 
-        // 如果已读列表中未包含该主题，则添加
         if (!list.find(item => item.id === topicId)) {
             list.push(topicEntry);
             saveReadList(list);
@@ -46,30 +45,34 @@
     }
 
     function init() {
-        const readList = getReadList();           // 获取已读列表
-        const deletedList = getDeletedList();     // 获取已删除列表
+        const readList = getReadList();
+        const deletedList = getDeletedList();
         const topics = document.querySelectorAll('app-topic');
 
-        // 遍历每个帖子
         topics.forEach((topic) => {
-            const topicId = topic.getAttribute('_ngcontent-ng-c2545957520'); // 获取帖子ID
-            const id = topicId || topic.innerText.slice(0, 30).trim(); // 获取ID或正文的前30个字符
+            const topicId = topic.getAttribute('_ngcontent-ng-c2545957520');
+            const id = topicId || topic.innerText.slice(0, 30).trim();
+            const topicContent = topic.innerText || '';
 
-            const topicContent = topic.innerText || ''; // 获取帖子正文内容
+            // 获取帖子中的所有图片，过滤掉头像和表情包链接
+            const images = Array.from(topic.querySelectorAll('img'))
+                .map(img => img.src)
+                .filter(src =>
+                    !src.includes('ignore-error') &&  // 过滤掉头像
+                    !src.includes('assets_dweb/images/emoji/') // 过滤掉表情包
+                );
 
-            // 检查帖子是否在已删除列表中
             const isDeleted = deletedList.includes(id);
             if (isDeleted) {
-                topic.style.display = 'none'; // 如果已删除则隐藏
-                return; // 跳过后续处理
+                topic.style.display = 'none';
+                return;
             }
 
-            // 检查帖子是否在已读列表中
             const isRead = readList.find(item => item.id === id);
             if (isRead) {
-                topic.style.display = 'none'; // 如果已读则隐藏
+                topic.style.display = 'none';
             } else {
-                if (topic.querySelector('.action-buttons')) return; // 检查按钮是否已存在
+                if (topic.querySelector('.action-buttons')) return;
 
                 const actionContainer = document.createElement('div');
                 actionContainer.className = 'action-buttons';
@@ -78,14 +81,14 @@
                     top: 10px;
                     right: 10px;
                     display: flex;
-                    gap: 5px; /* 按钮之间的间隙 */
+                    gap: 5px;
                 `;
 
                 const markAsReadBtn = document.createElement('button');
                 markAsReadBtn.innerText = '✅ 已读';
                 markAsReadBtn.className = 'mark-as-read-btn';
                 markAsReadBtn.style.cssText = `
-                    background-color: #4CAF50; /* 绿色背景 */
+                    background-color: #4CAF50;
                     color: white;
                     border: none;
                     border-radius: 4px;
@@ -96,14 +99,14 @@
                 markAsReadBtn.onclick = (e) => {
                     e.stopPropagation();
                     topic.style.display = 'none';
-                    markAsRead(id, topicContent); // 保存已读帖子内容
+                    markAsRead(id, topicContent, images);
                 };
 
                 const deleteBtn = document.createElement('button');
                 deleteBtn.innerText = '🗑️ 删除';
                 deleteBtn.className = 'delete-topic-btn';
                 deleteBtn.style.cssText = `
-                    background-color: #f44336; /* 红色背景 */
+                    background-color: #f44336;
                     color: white;
                     border: none;
                     border-radius: 4px;
@@ -113,12 +116,11 @@
 
                 deleteBtn.onclick = (e) => {
                     e.stopPropagation();
-                    topic.style.display = 'none'; // 从页面上隐藏
-                    const deletedList = getDeletedList(); // 获取当前的已删除列表
-                    // 更新已删除列表
+                    topic.style.display = 'none';
+                    const deletedList = getDeletedList();
                     if (!deletedList.includes(id)) {
                         deletedList.push(id);
-                        saveDeletedList(deletedList); // 更新本地存储
+                        saveDeletedList(deletedList);
                     }
                 };
 
@@ -155,7 +157,7 @@
         const clearBtn = document.createElement('button');
         clearBtn.innerText = '🗑️ 清除数据';
         clearBtn.style.cssText = `
-            background-color: #ff9800; /* 橙色背景 */
+            background-color: #ff9800;
             color: white;
             border: none;
             border-radius: 4px;
@@ -164,20 +166,19 @@
         `;
         clearBtn.onclick = () => {
             if (confirm('确定要清除所有数据吗？')) {
-                clearStorage(); // 清空所有数据
+                clearStorage();
                 alert('所有数据已清除，请刷新页面恢复原样。');
             }
         };
 
         panel.appendChild(exportBtn);
-        panel.appendChild(clearBtn); // 添加清除数据按钮
+        panel.appendChild(clearBtn);
         document.body.appendChild(panel);
     }
 
     createExportImportPanel();
-
     setTimeout(() => {
         init();
-        setInterval(init, 1000); // 每秒更新一次帖子
+        setInterval(init, 1000);
     }, 1000);
 })();
