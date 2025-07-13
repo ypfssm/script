@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         知识星球 - 已读帖子隐藏 + 删除 + 导出
 // @namespace    http://tampermonkey.net/
-// @version      1.13
-// @description  隐藏已读和删除内容，并存储在 localStorage 中，支持导入/导出已读记录
+// @version      1.15
+// @description  隐藏已读和删除内容，并存储在 localStorage 中，支持按组导入/导出已读记录
 // @match        https://wx.zsxq.com/group/*
 // @grant        none
 // ==/UserScript==
@@ -10,28 +10,29 @@
 (function () {
     'use strict';
 
-    const READ_STORAGE_KEY = 'zsxq_read_topics';
-    const DELETE_STORAGE_KEY = 'zsxq_deleted_topics';
+    const GET_GROUP_ID = () => location.pathname.split('/').pop(); // 获取当前组的 ID
+    const READ_STORAGE_KEY = 'zsxq_read_topics_';  // 默认键
+    const DELETE_STORAGE_KEY = 'zsxq_deleted_topics_'; // 默认键
 
     function getReadList() {
-        return JSON.parse(localStorage.getItem(READ_STORAGE_KEY) || '[]');
+        return JSON.parse(localStorage.getItem(READ_STORAGE_KEY + GET_GROUP_ID()) || '[]');
     }
 
     function saveReadList(list) {
-        localStorage.setItem(READ_STORAGE_KEY, JSON.stringify(list));
+        localStorage.setItem(READ_STORAGE_KEY + GET_GROUP_ID(), JSON.stringify(list));
     }
 
     function getDeletedList() {
-        return JSON.parse(localStorage.getItem(DELETE_STORAGE_KEY) || '[]');
+        return JSON.parse(localStorage.getItem(DELETE_STORAGE_KEY + GET_GROUP_ID()) || '[]');
     }
 
     function saveDeletedList(list) {
-        localStorage.setItem(DELETE_STORAGE_KEY, JSON.stringify(list));
+        localStorage.setItem(DELETE_STORAGE_KEY + GET_GROUP_ID(), JSON.stringify(list));
     }
 
     function clearStorage() {
-        localStorage.removeItem(READ_STORAGE_KEY);
-        localStorage.removeItem(DELETE_STORAGE_KEY);
+        localStorage.removeItem(READ_STORAGE_KEY + GET_GROUP_ID());
+        localStorage.removeItem(DELETE_STORAGE_KEY + GET_GROUP_ID());
     }
 
     function markAsRead(topicId, topicContent, topicImages) {
@@ -58,8 +59,8 @@
             const images = Array.from(topic.querySelectorAll('img'))
                 .map(img => img.src)
                 .filter(src =>
-                    !src.includes('ignore-error') &&  // 过滤掉头像
-                    !src.includes('assets_dweb/images/emoji/') // 过滤掉表情包
+                    !src.includes('ignore-error') &&
+                    !src.includes('assets_dweb/images/emoji/')
                 );
 
             const isDeleted = deletedList.includes(id);
@@ -151,7 +152,7 @@
         exportBtn.onclick = () => {
             const readList = getReadList();
             const data = JSON.stringify(readList, null, 2);
-            navigator.clipboard.writeText(data).then(() => alert('已复制到剪贴板'));
+            navigator.clipboard.writeText(data).then(() => alert('当前组的数据已复制到剪贴板'));
         };
 
         const clearBtn = document.createElement('button');
@@ -165,9 +166,9 @@
             cursor: pointer;
         `;
         clearBtn.onclick = () => {
-            if (confirm('确定要清除所有数据吗？')) {
+            if (confirm('确定要清除当前组的所有数据吗？')) {
                 clearStorage();
-                alert('所有数据已清除，请刷新页面恢复原样。');
+                alert('当前组的数据已清除，请刷新页面恢复原样。');
             }
         };
 
