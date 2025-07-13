@@ -1,0 +1,183 @@
+// ==UserScript==
+// @name         知识星球 - 已读帖子隐藏 + 删除 + 导出
+// @namespace    http://tampermonkey.net/
+// @version      1.9
+// @description  隐藏已读和删除内容，并存储在 localStorage 中，支持导入/导出已读记录
+// @match        https://wx.zsxq.com/group/*
+// @grant        none
+// ==/UserScript==
+
+(function () {
+    'use strict';
+
+    const READ_STORAGE_KEY = 'zsxq_read_topics';   // 保存已读帖子的键
+    const DELETE_STORAGE_KEY = 'zsxq_deleted_topics'; // 保存已删除帖子的键
+
+    function getReadList() {
+        return JSON.parse(localStorage.getItem(READ_STORAGE_KEY) || '[]');
+    }
+
+    function saveReadList(list) {
+        localStorage.setItem(READ_STORAGE_KEY, JSON.stringify(list));
+    }
+
+    function getDeletedList() {
+        return JSON.parse(localStorage.getItem(DELETE_STORAGE_KEY) || '[]');
+    }
+
+    function saveDeletedList(list) {
+        localStorage.setItem(DELETE_STORAGE_KEY, JSON.stringify(list));
+    }
+
+    function clearStorage() {
+        localStorage.removeItem(READ_STORAGE_KEY);
+        localStorage.removeItem(DELETE_STORAGE_KEY);
+    }
+
+    function markAsRead(topicId, topicContent) {
+        const list = getReadList();
+        const topicEntry = { id: topicId, content: topicContent };
+
+        // 如果已读列表中未包含该主题，则添加
+        if (!list.find(item => item.id === topicId)) {
+            list.push(topicEntry);
+            saveReadList(list);
+        }
+    }
+
+    function init() {
+        const readList = getReadList();           // 获取已读列表
+        const deletedList = getDeletedList();     // 获取已删除列表
+        const topics = document.querySelectorAll('app-topic');
+
+        // 遍历每个帖子
+        topics.forEach((topic) => {
+            const topicId = topic.getAttribute('_ngcontent-ng-c2545957520'); // 获取帖子ID
+            const id = topicId || topic.innerText.slice(0, 30).trim(); // 获取ID或正文的前30个字符
+
+            const topicContent = topic.innerText || ''; // 获取帖子正文内容
+
+            // 检查帖子是否在已删除列表中
+            const isDeleted = deletedList.includes(id);
+            if (isDeleted) {
+                topic.style.display = 'none'; // 如果已删除则隐藏
+                return; // 跳过后续处理
+            }
+
+            // 检查帖子是否在已读列表中
+            const isRead = readList.find(item => item.id === id);
+            if (isRead) {
+                topic.style.display = 'none'; // 如果已读则隐藏
+            } else {
+                if (topic.querySelector('.action-buttons')) return; // 检查按钮是否已存在
+
+                const actionContainer = document.createElement('div');
+                actionContainer.className = 'action-buttons';
+                actionContainer.style.cssText = `
+                    position: absolute;
+                    top: 10px;
+                    right: 10px;
+                    display: flex;
+                    gap: 5px; /* 按钮之间的间隙 */
+                `;
+
+                const markAsReadBtn = document.createElement('button');
+                markAsReadBtn.innerText = '✅ 已读';
+                markAsReadBtn.className = 'mark-as-read-btn';
+                markAsReadBtn.style.cssText = `
+                    background-color: #4CAF50; /* 绿色背景 */
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 4px 8px;
+                    cursor: pointer;
+                `;
+
+                markAsReadBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    topic.style.display = 'none';
+                    markAsRead(id, topicContent); // 保存已读帖子内容
+                };
+
+                const deleteBtn = document.createElement('button');
+                deleteBtn.innerText = '🗑️ 删除';
+                deleteBtn.className = 'delete-topic-btn';
+                deleteBtn.style.cssText = `
+                    background-color: #f44336; /* 红色背景 */
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 4px 8px;
+                    cursor: pointer;
+                `;
+
+                deleteBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    topic.style.display = 'none'; // 从页面上隐藏
+                    const deletedList = getDeletedList(); // 获取当前的已删除列表
+                    // 更新已删除列表
+                    if (!deletedList.includes(id)) {
+                        deletedList.push(id);
+                        saveDeletedList(deletedList); // 更新本地存储
+                    }
+                };
+
+                actionContainer.appendChild(markAsReadBtn);
+                actionContainer.appendChild(deleteBtn);
+                topic.style.position = 'relative';
+                topic.appendChild(actionContainer);
+            }
+        });
+    }
+
+    function createExportImportPanel() {
+        const panel = document.createElement('div');
+        panel.style.cssText = `
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: #fff;
+            border: 1px solid #ccc;
+            z-index: 9999;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 14px;
+        `;
+
+        const exportBtn = document.createElement('button');
+        exportBtn.innerText = '📤 导出已读帖子';
+        exportBtn.onclick = () => {
+            const readList = getReadList();
+            const data = JSON.stringify(readList, null, 2);
+            navigator.clipboard.writeText(data).then(() => alert('已复制到剪贴板'));
+        };
+
+        const clearBtn = document.createElement('button');
+        clearBtn.innerText = '🗑️ 清除数据';
+        clearBtn.style.cssText = `
+            background-color: #ff9800; /* 橙色背景 */
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 8px;
+            cursor: pointer;
+        `;
+        clearBtn.onclick = () => {
+            if (confirm('确定要清除所有数据吗？')) {
+                clearStorage(); // 清空所有数据
+                alert('所有数据已清除，请刷新页面恢复原样。');
+            }
+        };
+
+        panel.appendChild(exportBtn);
+        panel.appendChild(clearBtn); // 添加清除数据按钮
+        document.body.appendChild(panel);
+    }
+
+    createExportImportPanel();
+
+    setTimeout(() => {
+        init();
+        setInterval(init, 1000); // 每秒更新一次帖子
+    }, 1000);
+})();
